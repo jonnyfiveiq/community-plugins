@@ -13,7 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Link, Progress, Table } from '@backstage/core-components';
+import { useCallback, useMemo } from 'react';
+import { Link, Progress, Table, TableColumn } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 
 import { Box, Typography } from '@material-ui/core';
@@ -22,8 +23,10 @@ import { quayApiRef } from '../../api';
 import { DOC_LINKS } from '../../doc-links';
 import { useRepository, useTags } from '../../hooks';
 import { useQuayViewPermission } from '../../hooks/useQuayViewPermission';
+import type { QuayTagData } from '../../types';
 import PermissionAlert from '../PermissionAlert/PermissionAlert';
-import { columns } from './tableHeading';
+import { columns as baseColumns } from './tableHeading';
+import { TagActions } from './TagActions';
 
 type QuayRepositoryProps = Record<never, any>;
 
@@ -46,7 +49,31 @@ export function QuayRepository(_props: QuayRepositoryProps) {
   ) : (
     `Quay repository: ${organization}/${repository}`
   );
-  const { loading, data } = useTags(instanceName, organization, repository);
+  const { loading, data, retry } = useTags(instanceName, organization, repository);
+
+  const handleRefresh = useCallback(() => {
+    retry();
+  }, [retry]);
+
+  // Add the Actions column dynamically so we can pass the required props
+  const columns: TableColumn<QuayTagData>[] = useMemo(() => [
+    ...baseColumns,
+    {
+      title: 'Actions',
+      field: 'actions',
+      sorting: false,
+      width: '80px',
+      render: (rowData: QuayTagData) => (
+        <TagActions
+          rowData={rowData}
+          instanceName={instanceName}
+          organization={organization}
+          repository={repository}
+          onRefresh={handleRefresh}
+        />
+      ),
+    },
+  ], [instanceName, organization, repository, handleRefresh]);
 
   if (!hasViewPermission) {
     return <PermissionAlert />;

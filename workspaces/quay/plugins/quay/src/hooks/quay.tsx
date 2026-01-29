@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { useMemo, useState } from 'react';
-import { useAsync } from 'react-use';
+import { useCallback, useMemo, useState } from 'react';
+import { useAsyncRetry } from 'react-use';
 
 import { Entity } from '@backstage/catalog-model';
 import { useApi } from '@backstage/core-plugin-api';
@@ -44,15 +44,11 @@ export const useTags = (
 ) => {
   const quayClient = useApi(quayApiRef);
   const [tags, setTags] = useState<Tag[]>([]);
-  const [tagManifestLayers, setTagManifestLayers] = useState<
-    Record<string, Layer>
-  >({});
-  const [tagManifestStatuses, setTagManifestStatuses] = useState<
-    Record<string, string>
-  >({});
+  const [tagManifestLayers, setTagManifestLayers] = useState<Record<string, Layer>>({});
+  const [tagManifestStatuses, setTagManifestStatuses] = useState<Record<string, string>>({});
   const localClasses = useLocalStyles();
 
-  const fetchSecurityDetails = async (tag: Tag) => {
+  const fetchSecurityDetails = useCallback(async (tag: Tag) => {
     const securityDetails = await quayClient.getSecurityDetails(
       instanceName,
       organization,
@@ -60,9 +56,14 @@ export const useTags = (
       tag.manifest_digest,
     );
     return securityDetails;
-  };
+  }, [quayClient, instanceName, organization, repository]);
 
-  const { loading } = useAsync(async () => {
+  const { loading, retry } = useAsyncRetry(async () => {
+    // Clear existing tags on retry
+    setTags([]);
+    setTagManifestLayers({});
+    setTagManifestStatuses({});
+
     const tagsResponse = await quayClient.getTags(
       instanceName,
       organization,
@@ -89,9 +90,9 @@ export const useTags = (
         }
       }),
     );
-    setTags(prevTags => [...prevTags, ...tagsResponse.tags]);
+    setTags(tagsResponse.tags);
     return tagsResponse;
-  });
+  }, [quayClient, instanceName, organization, repository, fetchSecurityDetails]);
 
   const data: QuayTagData[] = useMemo(() => {
     return Object.values(tags)?.map(tag => {
@@ -115,16 +116,11 @@ export const useTags = (
         securityDetails: tagManifestLayers[tag.manifest_digest],
         securityStatus: tagManifestStatuses[tag.manifest_digest],
         manifest_digest_raw: tag.manifest_digest,
-        // is_manifest_list: tag.is_manifest_list,
-        // reversion: tag.reversion,
-        // start_ts: tag.start_ts,
-        // end_ts: tag.end_ts,
-        // manifest_list: tag.manifest_list,
       };
     });
   }, [tags, localClasses.chip, tagManifestLayers, tagManifestStatuses]);
 
-  return { loading, data };
+  return { loading, data, retry };
 };
 
 export const QUAY_ANNOTATION_REPOSITORY = 'quay.io/repository-slug';
@@ -164,7 +160,7 @@ export const useTagDetails = (
   digest: string,
 ) => {
   const quayClient = useApi(quayApiRef);
-  const result = useAsync(async () => {
+  const result = useAsyncRetry(async () => {
     const manifestLayer = await quayClient.getSecurityDetails(
       instanceName,
       org,
@@ -172,6 +168,6 @@ export const useTagDetails = (
       digest,
     );
     return manifestLayer;
-  });
+  }, [quayClient, instanceName, org, repo, digest]);
   return result;
 };

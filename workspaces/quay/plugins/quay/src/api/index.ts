@@ -23,6 +23,7 @@ import {
 import { QUAY_SINGLE_INSTANCE_NAME } from '@backstage-community/plugin-quay-common';
 
 import {
+  Label,
   LabelsResponse,
   ManifestByDigestResponse,
   SecurityDetailsResponse,
@@ -58,6 +59,36 @@ export interface QuayApiV1 {
     repo: string,
     digest: string,
   ): Promise<SecurityDetailsResponse>;
+  // Write operations
+  createTag(
+    instanceName: string | undefined,
+    org: string,
+    repo: string,
+    tag: string,
+    manifestDigest: string,
+  ): Promise<void>;
+  deleteTag(
+    instanceName: string | undefined,
+    org: string,
+    repo: string,
+    tag: string,
+  ): Promise<void>;
+  addLabel(
+    instanceName: string | undefined,
+    org: string,
+    repo: string,
+    manifestDigest: string,
+    key: string,
+    value: string,
+    mediaType?: string,
+  ): Promise<Label>;
+  deleteLabel(
+    instanceName: string | undefined,
+    org: string,
+    repo: string,
+    manifestDigest: string,
+    labelId: string,
+  ): Promise<void>;
 }
 
 export const quayApiRef = createApiRef<QuayApiV1>({
@@ -190,6 +221,65 @@ export class QuayApiClient implements QuayApiV1 {
     return await response.json();
   }
 
+  private async poster(url: string, body: Record<string, any>) {
+    const { token: idToken } = await this.identityApi.getCredentials();
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idToken && { Authorization: `Bearer ${idToken}` }),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `failed to post data, status ${response.status}: ${text}`,
+      );
+    }
+    return response.json();
+  }
+
+  private async putter(url: string, body: Record<string, any>) {
+    const { token: idToken } = await this.identityApi.getCredentials();
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idToken && { Authorization: `Bearer ${idToken}` }),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `failed to put data, status ${response.status}: ${text}`,
+      );
+    }
+    // PUT tag returns empty body on success
+    if (response.status === 201 || response.headers.get('content-length') === '0') {
+      return {};
+    }
+    return response.json();
+  }
+
+  private async deleter(url: string) {
+    const { token: idToken } = await this.identityApi.getCredentials();
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idToken && { Authorization: `Bearer ${idToken}` }),
+      },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `failed to delete, status ${response.status}: ${text}`,
+      );
+    }
+  }
+
   private encodeGetParams(params: Record<string, any>) {
     return Object.keys(params)
       .filter(key => typeof params[key] !== 'undefined')
@@ -258,5 +348,61 @@ export class QuayApiClient implements QuayApiV1 {
     return (await this.fetcher(
       `${baseUrl}/repository/${org}/${repo}/manifest/${digest}/security`,
     )) as SecurityDetailsResponse;
+  }
+
+  async createTag(
+    instanceName: string | undefined,
+    org: string,
+    repo: string,
+    tag: string,
+    manifestDigest: string,
+  ): Promise<void> {
+    const baseUrl = await this.getBaseUrl(instanceName);
+    await this.putter(
+      `${baseUrl}/repository/${org}/${repo}/tag/${tag}`,
+      { manifest_digest: manifestDigest },
+    );
+  }
+
+  async deleteTag(
+    instanceName: string | undefined,
+    org: string,
+    repo: string,
+    tag: string,
+  ): Promise<void> {
+    const baseUrl = await this.getBaseUrl(instanceName);
+    await this.deleter(
+      `${baseUrl}/repository/${org}/${repo}/tag/${tag}`,
+    );
+  }
+
+  async addLabel(
+    instanceName: string | undefined,
+    org: string,
+    repo: string,
+    manifestDigest: string,
+    key: string,
+    value: string,
+    mediaType: string = 'text/plain',
+  ): Promise<Label> {
+    const baseUrl = await this.getBaseUrl(instanceName);
+    const result = await this.poster(
+      `${baseUrl}/repository/${org}/${repo}/manifest/${manifestDigest}/labels`,
+      { key, value, media_type: mediaType },
+    );
+    return result.label;
+  }
+
+  async deleteLabel(
+    instanceName: string | undefined,
+    org: string,
+    repo: string,
+    manifestDigest: string,
+    labelId: string,
+  ): Promise<void> {
+    const baseUrl = await this.getBaseUrl(instanceName);
+    await this.deleter(
+      `${baseUrl}/repository/${org}/${repo}/manifest/${manifestDigest}/labels/${labelId}`,
+    );
   }
 }

@@ -33,6 +33,7 @@ import {
   v4securityDetails,
 } from './__data__/security_vulnerabilities';
 import { tags } from './__data__/tags';
+import { Label } from '../src/types';
 
 const mockEntity: Entity = {
   apiVersion: 'backstage.io/v1alpha1',
@@ -97,6 +98,59 @@ export class MockQuayApiClient implements QuayApiV1 {
     }
 
     return securityDetails;
+  }
+
+  // Write operations (mock implementations)
+  async createTag(
+    _instanceName: string | undefined,
+    _org: string,
+    _repo: string,
+    _tag: string,
+    _manifestDigest: string,
+  ): Promise<void> {
+    // Mock implementation - does nothing
+    console.log('Mock: createTag called');
+  }
+
+  async deleteTag(
+    _instanceName: string | undefined,
+    _org: string,
+    _repo: string,
+    _tag: string,
+  ): Promise<void> {
+    // Mock implementation - does nothing
+    console.log('Mock: deleteTag called');
+  }
+
+  async addLabel(
+    _instanceName: string | undefined,
+    _org: string,
+    _repo: string,
+    _manifestDigest: string,
+    key: string,
+    value: string,
+    _mediaType?: string,
+  ): Promise<Label> {
+    // Mock implementation - returns a fake label
+    console.log('Mock: addLabel called');
+    return {
+      id: 'mock-label-id',
+      key,
+      value,
+      source_type: 'api',
+      media_type: 'text/plain',
+    };
+  }
+
+  async deleteLabel(
+    _instanceName: string | undefined,
+    _org: string,
+    _repo: string,
+    _manifestDigest: string,
+    _labelId: string,
+  ): Promise<void> {
+    // Mock implementation - does nothing
+    console.log('Mock: deleteLabel called');
   }
 }
 
